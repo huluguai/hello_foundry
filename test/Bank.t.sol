@@ -124,7 +124,7 @@ contract BankTest is Test {
         bank.deposit{value: 1 ether}();
         assertEq(address(bank).balance, 1 ether);
         vm.prank(user1);
-        vm.expectRevert("only admin can withdraw");
+        vm.expectRevert("Only admin can withdraw");
         bank.withdraw();
 
         address bankAdmin = bank.admin();
