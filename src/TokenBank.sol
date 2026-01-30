@@ -1,4 +1,5 @@
-pragma solidity ^0.8.13;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
 
 // 导入IERC20接口，用于与BERC20代币交互
 interface IERC20 {
