@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
+
 pragma solidity ^0.8.0;
-
-
 /**
     @title SimpleMultitSigWallet
     @dev A simple multisignature wallet
@@ -71,8 +70,8 @@ contract SimpleMultitSigWallet {
         //初始化所有人
         for(uint256 i = 0; i < _owners.length; i++){
             address owner = _owners[i];
-            require(owner != address(0), "Invalid owner")
-            require(!isOwner[owner], "Owner not unique")
+            require(owner != address(0), "Invalid owner");
+            require(!isOwner[owner], "Owner not unique");
             isOwner[owner] = true;
             owners.push(owner);
         }
@@ -95,15 +94,18 @@ contract SimpleMultitSigWallet {
      */
      function submitTransaction(address _destination, uint256 _value, bytes memory _data) external onlyOwner returns (uint256) { 
         require(_destination != address(0), "Invalid destination");
-        require(_value > 0, "Invalid value");
-        require(_data.length > 0, "Invalid data");
+        // 允许以下组合：
+        // 1. value > 0 且 data 为空：纯 ETH 转账
+        // 2. value == 0 且 data 不为空：函数调用
+        // 3. value > 0 且 data 不为空：ETH 转账 + 函数调用
+        require(_value > 0 || _data.length > 0, "Either value or data must be provided");
         uint256 txId = transactions.length;
         transactions.push(Transaction({
             destination: _destination,
             value: _value,
             data: _data,
             executed: false,
-            numConfirmations: 0,
+            numConfirmations: 0
         }));
         emit SubmitTransaction(txId, _destination, _value, _data, msg.sender);
 
@@ -116,7 +118,7 @@ contract SimpleMultitSigWallet {
     * @dev 多签持有人确认交易提案
     * @param _txId 交易ID
     */
-    function confirmTransaction(uint256 _txId) external onlyOwner txExists(_txId) notExecuted(_txId) notConfirmed(_txId) {
+    function confirmTransaction(uint256 _txId) public onlyOwner txExists(_txId) notExecuted(_txId) notConfirmed(_txId) {
         confirmations[_txId][msg.sender] = true; // 确认交易
         transactions[_txId].numConfirmations += 1;
         emit ConfirmTransaction(msg.sender, _txId);
@@ -140,10 +142,10 @@ contract SimpleMultitSigWallet {
     function executeTransaction(uint256 _txId) external txExists(_txId) notExecuted(_txId) {
         require(transactions[_txId].numConfirmations >= required, "Not enough confirmations");
         require(transactions[_txId].executed == false, "Transaction already executed"); // 防止重复执行
-        Transaction storage tx = transactions[_txId];
+        Transaction storage txData = transactions[_txId];
         // 设置交易为已执行
-        tx.executed = true; 
-        (bool success, bytes memory returnData) = tx.destination.call{value: tx.value}(tx.data);
+        txData.executed = true; 
+        (bool success, bytes memory returnData) = txData.destination.call{value: txData.value}(txData.data);
         emit ExecuteTransaction(msg.sender, _txId, success, returnData);
         require(success, "Transaction execution failed");
     }
@@ -216,16 +218,8 @@ contract SimpleMultitSigWallet {
     * @return 交易目标地址, 交易金额, 交易数据, 是否已执行, 确认者数量
      */
     function getTransaction(uint256 _txId) external view returns (address, uint256, bytes memory, bool, uint256) {
-        Transaction storage tx = transactions[_txId];
-        return (tx.destination, tx.value, tx.data, tx.executed, tx.numConfirmations);
-    }
-    /**
-    * @dev 检查地址是否有持有人
-    * @param _owner 地址
-    * @return 是否为持有人
-     */
-    function isOwner(address _owner) external view returns (bool) {
-        return isOwner[_owner];
+        Transaction storage txData = transactions[_txId];
+        return (txData.destination, txData.value, txData.data, txData.executed, txData.numConfirmations);
     }
 
     /**

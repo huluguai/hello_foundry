@@ -122,7 +122,7 @@ contract SimpleMultitSigWalletTest is Test {
     // ============ 提交交易测试 ============
     
     function test_SubmitTransaction_Success() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";  // 纯 ETH 转账，使用空 data
         uint256 value = 1 ether;
         
         vm.expectEmit(true, true, false, true);
@@ -147,7 +147,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_SubmitTransaction_NotOwner() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(nonOwner);
         vm.expectRevert("Not an owner");
@@ -155,7 +155,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_SubmitTransaction_InvalidDestination() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         vm.expectRevert("Invalid destination");
@@ -163,25 +163,27 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_SubmitTransaction_InvalidValue() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
-        
-        vm.prank(owner1);
-        vm.expectRevert("Invalid value");
-        wallet.submitTransaction(recipient, 0, data);
-    }
-    
-    function test_SubmitTransaction_InvalidData() public {
         bytes memory emptyData = "";
         
         vm.prank(owner1);
-        vm.expectRevert("Invalid data");
-        wallet.submitTransaction(recipient, 1 ether, emptyData);
+        vm.expectRevert("Either value or data must be provided");
+        wallet.submitTransaction(recipient, 0, emptyData);
+    }
+    
+    function test_SubmitTransaction_InvalidData() public {
+        // 这个测试不再需要，因为允许 value > 0 且 data 为空
+        // 保留用于测试 value == 0 且 data 为空的情况
+        bytes memory emptyData = "";
+        
+        vm.prank(owner1);
+        vm.expectRevert("Either value or data must be provided");
+        wallet.submitTransaction(recipient, 0, emptyData);
     }
     
     // ============ 确认交易测试 ============
     
     function test_ConfirmTransaction_Success() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -199,7 +201,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_ConfirmTransaction_NotOwner() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -216,7 +218,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_ConfirmTransaction_AlreadyExecuted() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -233,7 +235,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_ConfirmTransaction_AlreadyConfirmed() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -246,7 +248,7 @@ contract SimpleMultitSigWalletTest is Test {
     // ============ 撤销确认测试 ============
     
     function test_RevokeConfirmation_Success() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -266,7 +268,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_RevokeConfirmation_NotConfirmed() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -280,7 +282,7 @@ contract SimpleMultitSigWalletTest is Test {
     
     function test_ExecuteTransaction_Success() public {
         uint256 amount = 1 ether;
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, amount);
+        bytes memory data = "";  // 纯 ETH 转账
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, amount, data);
@@ -305,7 +307,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_ExecuteTransaction_NotEnoughConfirmations() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -322,7 +324,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_ExecuteTransaction_AlreadyExecuted() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -339,7 +341,7 @@ contract SimpleMultitSigWalletTest is Test {
     }
     
     function test_ExecuteTransaction_AnyoneCanExecute() public {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        bytes memory data = "";
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
@@ -451,6 +453,10 @@ contract SimpleMultitSigWalletTest is Test {
         vm.prank(owner2);
         wallet.confirmTransaction(txId);
         
+        // required 是 3，需要 3 个确认，所以需要 owner3 也确认
+        vm.prank(owner3);
+        wallet.confirmTransaction(txId);
+        
         vm.expectEmit(true, false, false, true);
         emit RequirementChanged(2);
         
@@ -473,6 +479,9 @@ contract SimpleMultitSigWalletTest is Test {
         bytes memory data2 = abi.encodeWithSignature("removeOwner(address)", owner2);
         vm.prank(owner1);
         uint256 txId2 = wallet.submitTransaction(address(wallet), 0, data2);
+        // required 是 2，需要 2 个确认，所以需要 owner2 也确认（但 owner2 还在，因为交易还没执行）
+        vm.prank(owner2);
+        wallet.confirmTransaction(txId2);
         vm.prank(owner1);
         wallet.executeTransaction(txId2);
         
@@ -480,21 +489,24 @@ contract SimpleMultitSigWalletTest is Test {
         bytes memory data3 = abi.encodeWithSignature("removeOwner(address)", owner1);
         vm.prank(owner1);
         uint256 txId3 = wallet.submitTransaction(address(wallet), 0, data3);
+        // 现在只有 owner1 一个持有人，required 应该是 1，所以只需要 owner1 确认
         vm.prank(owner1);
         
-        vm.expectRevert("At least one owner is required");
+        // removeOwner 会抛出 "At least one owner is required"，但 executeTransaction 会捕获并抛出 "Transaction execution failed"
+        vm.expectRevert("Transaction execution failed");
         wallet.executeTransaction(txId3);
     }
     
     // ============ 视图函数测试 ============
     
-    function test_GetOwners() public {
+    function test_GetOwners() public view {
         address[] memory retrievedOwners = wallet.getOwners();
         assertEq(retrievedOwners.length, 3);
         assertEq(retrievedOwners[0], owner1);
         assertEq(retrievedOwners[1], owner2);
         assertEq(retrievedOwners[2], owner3);
     }
+    
     
     function test_GetBalance() public {
         assertEq(wallet.getBalance(), 5 ether);
@@ -503,7 +515,7 @@ contract SimpleMultitSigWalletTest is Test {
         assertEq(wallet.getBalance(), 10 ether);
     }
     
-    function test_IsOwner() public {
+    function test_IsOwner() public view {
         assertTrue(wallet.isOwner(owner1));
         assertTrue(wallet.isOwner(owner2));
         assertTrue(wallet.isOwner(owner3));
@@ -520,8 +532,8 @@ contract SimpleMultitSigWalletTest is Test {
         assertTrue(success);
         assertEq(address(wallet).balance, 7 ether);
         
-        // 2. 提交交易
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, 1 ether);
+        // 2. 提交交易（纯 ETH 转账）
+        bytes memory data = "";
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, 1 ether, data);
         
@@ -548,7 +560,7 @@ contract SimpleMultitSigWalletTest is Test {
     function testFuzz_SubmitTransaction(uint256 value) public {
         vm.assume(value > 0 && value <= address(wallet).balance);
         
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", recipient, value);
+        bytes memory data = "";  // 纯 ETH 转账
         
         vm.prank(owner1);
         uint256 txId = wallet.submitTransaction(recipient, value, data);

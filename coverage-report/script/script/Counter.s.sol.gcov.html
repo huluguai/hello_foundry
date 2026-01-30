@@ -37,20 +37,11 @@
           </tr>
           <tr>
             <td class="headerItem">Test Date:</td>
-            <td class="headerValue">2026-01-14 14:52:16</td>
+            <td class="headerValue">2026-01-30 23:50:06</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntryLo">0.0&nbsp;%</td>
             <td class="headerCovTableEntry">2</td>
-            <td class="headerCovTableEntry">0</td>
-          </tr>
-          <tr>
-            <td></td>
-            <td></td>
-            <td></td>
-            <td class="headerItem">Branches:</td>
-            <td class="headerCovTableEntryHi">-</td>
-            <td class="headerCovTableEntry">0</td>
             <td class="headerCovTableEntry">0</td>
           </tr>
                   <tr><td><img src="../../glass.png" width=3 height=3 alt=""></td></tr>
@@ -67,27 +58,27 @@
             </tr>
             <tr>
               <td>
-<pre class="sourceHeading">             Branch data     Line data    Source code</pre>
+<pre class="sourceHeading">            Line data    Source code</pre>
 <pre class="source">
-<span id="L1"><span class="lineNum">       1</span>                 :             : // SPDX-License-Identifier: UNLICENSED</span>
-<span id="L2"><span class="lineNum">       2</span>                 :             : pragma solidity ^0.8.13;</span>
-<span id="L3"><span class="lineNum">       3</span>                 :             : </span>
-<span id="L4"><span class="lineNum">       4</span>                 :             : import {Script} from &quot;forge-std/Script.sol&quot;;</span>
-<span id="L5"><span class="lineNum">       5</span>                 :             : import {Counter} from &quot;../src/Counter.sol&quot;;</span>
-<span id="L6"><span class="lineNum">       6</span>                 :             : </span>
-<span id="L7"><span class="lineNum">       7</span>                 :             : contract CounterScript is Script {</span>
-<span id="L8"><span class="lineNum">       8</span>                 :             :     Counter public counter;</span>
-<span id="L9"><span class="lineNum">       9</span>                 :             : </span>
-<span id="L10"><span class="lineNum">      10</span>                 :<span class="tlaUNC tlaBgUNC">           0 :     function setUp() public {}</span></span>
-<span id="L11"><span class="lineNum">      11</span>                 :             : </span>
-<span id="L12"><span class="lineNum">      12</span>                 :<span class="tlaUNC">           0 :     function run() public {</span></span>
-<span id="L13"><span class="lineNum">      13</span>                 :<span class="tlaUNC">           0 :         vm.startBroadcast();</span></span>
-<span id="L14"><span class="lineNum">      14</span>                 :             : </span>
-<span id="L15"><span class="lineNum">      15</span>                 :<span class="tlaUNC">           0 :         counter = new Counter();</span></span>
-<span id="L16"><span class="lineNum">      16</span>                 :             : </span>
-<span id="L17"><span class="lineNum">      17</span>                 :<span class="tlaUNC">           0 :         vm.stopBroadcast();</span></span>
-<span id="L18"><span class="lineNum">      18</span>                 :             :     }</span>
-<span id="L19"><span class="lineNum">      19</span>                 :             : }</span>
+<span id="L1"><span class="lineNum">       1</span>              : // SPDX-License-Identifier: UNLICENSED</span>
+<span id="L2"><span class="lineNum">       2</span>              : pragma solidity ^0.8.13;</span>
+<span id="L3"><span class="lineNum">       3</span>              : </span>
+<span id="L4"><span class="lineNum">       4</span>              : import {Script} from &quot;forge-std/Script.sol&quot;;</span>
+<span id="L5"><span class="lineNum">       5</span>              : import {Counter} from &quot;../src/Counter.sol&quot;;</span>
+<span id="L6"><span class="lineNum">       6</span>              : </span>
+<span id="L7"><span class="lineNum">       7</span>              : contract CounterScript is Script {</span>
+<span id="L8"><span class="lineNum">       8</span>              :     Counter public counter;</span>
+<span id="L9"><span class="lineNum">       9</span>              : </span>
+<span id="L10"><span class="lineNum">      10</span> <span class="tlaUNC tlaBgUNC">           0 :     function setUp() public {}</span></span>
+<span id="L11"><span class="lineNum">      11</span>              : </span>
+<span id="L12"><span class="lineNum">      12</span> <span class="tlaUNC">           0 :     function run() public {</span></span>
+<span id="L13"><span class="lineNum">      13</span> <span class="tlaUNC">           0 :         vm.startBroadcast();</span></span>
+<span id="L14"><span class="lineNum">      14</span>              : </span>
+<span id="L15"><span class="lineNum">      15</span> <span class="tlaUNC">           0 :         counter = new Counter();</span></span>
+<span id="L16"><span class="lineNum">      16</span>              : </span>
+<span id="L17"><span class="lineNum">      17</span> <span class="tlaUNC">           0 :         vm.stopBroadcast();</span></span>
+<span id="L18"><span class="lineNum">      18</span>              :     }</span>
+<span id="L19"><span class="lineNum">      19</span>              : }</span>
         </pre>
               </td>
             </tr>
