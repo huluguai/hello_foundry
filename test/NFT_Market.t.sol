@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import { Test } from "forge-std/Test.sol";
-import {NFTMarket, IExtendedERC20, ITokenReceiver, IERC721} from "../src/NFT_Market.sol";
-import {console2} from "forge-std/console2.sol"; // 导入 console2
+import { NFTMarket, IExtendedERC20, IERC721, ITokenReceiver } from "../src/NFT_Market.sol";
+import { console2 } from "forge-std/console2.sol";
 // 模拟ERC20代币合约
 contract MockERC20 is IExtendedERC20 {
     mapping(address => uint256) private _balances;
