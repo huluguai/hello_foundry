@@ -113,7 +113,7 @@ contract NFTMarket is ITokenReceiver {
     }
     
     // 普通购买NFT功能
-    function buyNFT(uint256 _listingId) external {
+    function buyNft(uint256 _listingId) external {
         // 检查上架信息是否存在且处于活跃状态
         Listing storage listing = listings[_listingId];
         require(listing.isActive, "NFTMarket: listing is not active");
@@ -168,7 +168,7 @@ contract NFTMarket is ITokenReceiver {
     }
     
     // 使用transferWithCallbackAndData购买NFT的辅助函数
-    function buyNFTWithCallback(uint256 _listingId) external {
+    function buyNftWithCallback(uint256 _listingId) external {
         // 检查上架信息是否存在且处于活跃状态
         Listing storage listing = listings[_listingId];
         require(listing.isActive, "NFTMarket: listing is not active");

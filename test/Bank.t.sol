@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 
 import { Test } from "forge-std/Test.sol";
 import { Bank } from "../src/Bank.sol";
-import "forge-std/console2.sol"; // 导入 console2
+import {console2} from "forge-std/console2.sol"; // 导入 console2
 
 
 contract BankTest is Test {
@@ -127,7 +127,7 @@ contract BankTest is Test {
         vm.expectRevert("Only admin can withdraw");
         bank.withdraw();
 
-        address bankAdmin = bank.admin();
+        address bankAdmin = bank.ADMIN();
         uint256 beforBalance = bankAdmin.balance;
         vm.prank(bankAdmin);
         bank.withdraw();

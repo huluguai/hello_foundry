@@ -43,20 +43,36 @@ contract SimpleMultitSigWallet {
     mapping(uint256 => mapping(address => bool)) public confirmations;
     // 修饰器
     modifier onlyOwner() {
+        _onlyOwner();
+        _;
+    }
+    modifier txExists(uint256 _txId) {
+        _txExists(_txId);
+        _;
+    }
+    modifier notExecuted(uint256 _txId) {
+        _notExecuted(_txId);
+        _;
+    }
+    modifier notConfirmed(uint256 _txId) {
+        _notConfirmed(_txId);
+        _;
+    }
+
+    function _onlyOwner() internal view {
         require(isOwner[msg.sender], "Not an owner");
-        _;
     }
-    modifier txExists(uint256 _txId){
+
+    function _txExists(uint256 _txId) internal view {
         require(_txId < transactions.length, "Transaction does not exist");
-        _;
     }
-    modifier notExecuted(uint256 _txId){
+
+    function _notExecuted(uint256 _txId) internal view {
         require(!transactions[_txId].executed, "Transaction already executed");
-        _;
     }
-    modifier notConfirmed(uint256 _txId){
+
+    function _notConfirmed(uint256 _txId) internal view {
         require(!confirmations[_txId][msg.sender], "Transaction already confirmed");
-        _;
     }
     // 构造函数
     /**

@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import { Test } from "forge-std/Test.sol";
-import "../src/NFT_Market.sol";
-import "forge-std/console2.sol"; // 导入 console2
+import {NFTMarket, IExtendedERC20, ITokenReceiver, IERC721} from "../src/NFT_Market.sol";
+import {console2} from "forge-std/console2.sol"; // 导入 console2
 // 模拟ERC20代币合约
 contract MockERC20 is IExtendedERC20 {
     mapping(address => uint256) private _balances;
@@ -244,7 +244,7 @@ contract NFTMarketTest is Test {
         //预期发生购买事件
         vm.expectEmit(true, true, true, true);
         emit NFTSold(listingId, buyer, seller, address(nftContract), tokenId, price);
-        market.buyNFT(listingId);
+        market.buyNft(listingId);
         //验证NFT已转移
         console2.log("nftContract.ownerOf(tokenId)",nftContract.ownerOf(tokenId));
         console2.log("buyer",buyer);
@@ -266,7 +266,7 @@ contract NFTMarketTest is Test {
         uint256 listingId = market.list(address(nftContract), tokenId, price);
         vm.expectEmit(true, true, true, true);
         emit NFTSold(listingId, seller, seller, address(nftContract), tokenId, price);
-        market.buyNFT(listingId);
+        market.buyNft(listingId);
         assertEq(nftContract.ownerOf(tokenId),seller,"NFT ownership should be remain with seller");
          ( , , , ,bool isActive) = market.listings(listingId);
         assertFalse(isActive,"Listing should be inactive after purchase");
@@ -280,9 +280,9 @@ contract NFTMarketTest is Test {
         vm.stopPrank();
         vm.startPrank(buyer);
         paymentToken.approve(address(market), price);
-        market.buyNFT(listingId);
+        market.buyNft(listingId);
         vm.expectRevert("NFTMarket: listing is not active");
-        market.buyNFT(listingId);
+        market.buyNft(listingId);
         vm.stopPrank();
     }
     //测试支付token过少
@@ -296,7 +296,7 @@ contract NFTMarketTest is Test {
         vm.startPrank(poorBuyer);
         paymentToken.approve(address(market), price);
         vm.expectRevert("NFTMarket: insufficient token balance");
-        market.buyNFT(listingId);
+        market.buyNft(listingId);
         vm.stopPrank();
     }
     //测试回调方式支付过多token的情况
@@ -350,7 +350,7 @@ contract NFTMarketTest is Test {
         paymentToken.approve(address(market), listingPrice);
         vm.expectEmit(true, true, true, true);
         emit NFTSold(listingId, fuzzBuyer, seller, address(nftContract), tokenId, listingPrice);
-        market.buyNFT(listingId);
+        market.buyNft(listingId);
         assertEq(nftContract.ownerOf(tokenId),fuzzBuyer,"NFT ownership should be transferred to buyer");
         assertEq(paymentToken.balanceOf(seller),listingPrice,"Payment should be transferred to seller");
         ( , , , ,bool isActive) = market.listings(listingId);
@@ -366,7 +366,7 @@ contract NFTMarketTest is Test {
         vm.stopPrank();
         vm.startPrank(buyer);
         paymentToken.approve(address(market), price);
-        market.buyNFT(listingId);
+        market.buyNft(listingId);
         vm.stopPrank();
         assertEq(paymentToken.balanceOf(address(market)), 0, "Market contract should not hold any tokens");
         //再次上架
@@ -377,7 +377,7 @@ contract NFTMarketTest is Test {
         paymentToken.mint(seller, price * 2);
         vm.startPrank(seller);
         paymentToken.approve(address(market), price * 2);
-        market.buyNFT(newListingId);
+        market.buyNft(newListingId);
         vm.stopPrank();
         assertEq(paymentToken.balanceOf(address(market)), 0, "Market contract should not hold any tokens");
         vm.startPrank(seller);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {SimpleMultitSigWallet} from "../src/SimpleMultitSigWallet.sol";
 
 contract SimpleMultitSigWalletTest is Test {

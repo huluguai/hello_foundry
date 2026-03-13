@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 contract Bank {
-    address public immutable admin; 
+    address public immutable ADMIN; 
     mapping(address => uint) public deposits;
     
     // 存储存款金额前3名的地址
@@ -11,7 +11,7 @@ contract Bank {
     
     constructor() {
         //构造函数执行的时候指定部署合约的人就是管理员
-        admin = msg.sender;
+        ADMIN = msg.sender;
     }
     
     // 接收ETH并记录存款
@@ -63,14 +63,20 @@ contract Bank {
             if (key == address(0)) continue; // 跳过空地址
             
             uint keyDeposit = deposits[key];
-            int8 j = int8(i) - 1;
-            
-            while (j >= 0 && (topDepositors[uint8(j)] == address(0) || deposits[topDepositors[uint8(j)]] < keyDeposit)) {
-                topDepositors[uint8(j + 1)] = topDepositors[uint8(j)];
-                j--;
+            uint8 j = i;
+
+            while (j > 0) {
+                uint8 prev = j - 1;
+                address prevAddr = topDepositors[prev];
+                if (prevAddr == address(0) || deposits[prevAddr] < keyDeposit) {
+                    topDepositors[j] = prevAddr;
+                    j = prev;
+                } else {
+                    break;
+                }
             }
-            
-            topDepositors[uint8(j + 1)] = key;
+
+            topDepositors[j] = key;
         }
     }
     
@@ -86,7 +92,7 @@ contract Bank {
     // 只有管理员可以提取所有ETH
     function withdraw() external {
         // 检查调用者是否为管理员
-        require(msg.sender == admin, "Only admin can withdraw");
+        require(msg.sender == ADMIN, "Only admin can withdraw");
         
         // 获取合约余额
         uint balance = address(this).balance;
@@ -95,7 +101,7 @@ contract Bank {
         require(balance > 0, "No balance to withdraw");
         
         // 将所有ETH转给管理员
-        (bool success, ) = admin.call{value: balance}("");
+        (bool success, ) = ADMIN.call{value: balance}("");
         require(success, "Withdrawal failed");
     }
 }
