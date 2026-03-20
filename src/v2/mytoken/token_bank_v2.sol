@@ -1,113 +1,114 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
-import {TokenBank} from "./token_bank.sol";
-import {MyTokenV2} from "./my_token_v2.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 /**
- * @title TokenBankV2 - Enhanced TokenBank with Hook Support
- * @dev Supports direct deposits via transferWithCallback from MyTokenV2
+ * @title TokenBankV2
+ * @dev 面向标准 ERC20（含 OpenZeppelin ERC20Permit）。deposit / withdraw / permitDeposit 的 amount 均为最小单位。
  */
-contract TokenBankV2 is TokenBank {
-    
-    // ==================== 状态变量 ====================
-    
-    /// @notice MyTokenV2 代币合约实例
-    MyTokenV2 public tokenV2;
-    
-    // ==================== 事件定义 ====================
-    
-    /**
-     * @notice 通过 Hook 存款事件
-     * @param user 存款用户地址
-     * @param amount 存款金额（最小单位）
-     * @param timestamp 存款时间戳
-     * @param data 附加数据
-     */
-    event DepositViaHook(address indexed user, uint256 amount, uint256 timestamp, bytes data);
-    
-    // ==================== 构造函数 ====================
-    
-    /**
-     * @notice 合约部署时初始化
-     * @dev 设置 MyTokenV2 代币合约地址
-     * @param _tokenAddress MyTokenV2 合约地址
-     */
-    constructor(address _tokenAddress) TokenBank(_tokenAddress) {
+contract TokenBankV2 {
+    IERC20Metadata public immutable token;
+
+    mapping(address => uint256) public deposits;
+    address[] public depositors;
+    mapping(address => bool) public hasDeposited;
+
+    event Deposit(address indexed user, uint256 amount, uint256 timestamp);
+    event Withdraw(address indexed user, uint256 amount, uint256 timestamp);
+
+    constructor(address _tokenAddress) {
         require(_tokenAddress != address(0), "Invalid token address");
-        tokenV2 = MyTokenV2(_tokenAddress);
+        token = IERC20Metadata(_tokenAddress);
     }
-    
-    // ==================== Hook 回调函数 ====================
-    
+
     /**
-     * @notice 接收代币时的回调函数
-     * @dev 当用户通过 transferWithCallback 直接转账到 TokenBankV2 时触发
-     * @param from 发送者地址
-     * @param to 接收者地址（本合约地址）
-     * @param amount 接收的金额（最小单位）
-     * @param data 附加数据
-     * @return 是否成功
+     * @notice 存入代币（最小单位）
+     * @dev 需先 approve 本合约
      */
-    function tokensReceived(
-        address from,
-        address to,
-        uint256 amount,
-        bytes calldata data
-    ) external returns (bool) {
-        // 确保只有来自指定的 TokenV2 合约的转账才被接受
-        require(msg.sender == address(tokenV2), "Only accepts tokens from specified token contract");
-        
-        // 确保是转账到这个合约
-        require(to == address(this), "Tokens not sent to this contract");
-        
-        // 更新用户存款余额
-        deposits[from] += amount;
-        
-        // 如果是首次存款，添加到存款人列表
-        if (!hasDeposited[from]) {
-            hasDeposited[from] = true;
-            depositors.push(from);
-        }
-        
-        // 发出存款事件（包含附加数据）
-        emit Deposit(from, amount, block.timestamp);
-        emit DepositViaHook(from, amount, block.timestamp, data);
-        
-        return true;
-    }
-    
-    // ==================== 覆盖父合约的 deposit 函数 ====================
-    
-    /**
-     * @notice 存入代币到 Bank（支持 MyToken 和 MyTokenV2）
-     * @dev 用户需要先授权 TokenBankV2 使用其代币，然后调用此方法
-     * @param amount 存入的代币数量（代币单位）
-     * @return 是否成功
-     */
-    function deposit(uint256 amount) external override returns (bool) {
-        // 检查存入数量必须大于 0
+    function deposit(uint256 amount) external returns (bool) {
         require(amount > 0, "Deposit amount must be greater than 0");
-        
-        // 检查用户余额是否足够
-        require(token.balanceOf(msg.sender) >= amount * (10 ** uint256(token.decimals())), "Insufficient token balance");
-        
-        // 从用户转账到 TokenBankV2 合约
-        bool success = token.transferFrom(msg.sender, address(this), amount);
-        require(success, "Transfer failed");
-        
-        // 更新用户存款余额（存储最小单位）
-        deposits[msg.sender] += amount * (10 ** uint256(token.decimals()));
-        
-        // 如果是首次存款，添加到存款人列表
+        require(token.balanceOf(msg.sender) >= amount, "Insufficient token balance");
+        require(token.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+
+        deposits[msg.sender] += amount;
         if (!hasDeposited[msg.sender]) {
             hasDeposited[msg.sender] = true;
             depositors.push(msg.sender);
         }
-        
-        // 发出存款事件
-        emit Deposit(msg.sender, amount * (10 ** uint256(token.decimals())), block.timestamp);
-        
+        emit Deposit(msg.sender, amount, block.timestamp);
         return true;
+    }
+
+    /**
+     * @notice 取款（最小单位）
+     */
+    function withdraw(uint256 amount) external returns (bool) {
+        require(amount > 0, "Withdraw amount must be greater than 0");
+        require(deposits[msg.sender] >= amount, "Insufficient deposit balance");
+        unchecked {
+            deposits[msg.sender] -= amount;
+        }
+        require(token.transfer(msg.sender, amount), "Transfer failed");
+        if (deposits[msg.sender] == 0) {
+            hasDeposited[msg.sender] = false;
+        }
+        emit Withdraw(msg.sender, amount, block.timestamp);
+        return true;
+    }
+
+    /**
+     * @notice EIP-2612 离线授权后由第三方代调存款
+     * @param owner 签名者 / 代币持有者
+     * @param amount 存入数量（最小单位，与 permit 中 value 一致）
+     */
+    function permitDeposit(
+        address owner,
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (bool) {
+        // 1) 存入数量必须为正，避免无意义的 permit/transferFrom 与状态写入
+        require(amount > 0, "Deposit amount must be greater than 0");
+        // 2) owner 即链下签名中的代币持有者，零地址无法持有代币也无法合法签名通过 permit
+        require(owner != address(0), "Invalid owner");
+        // 3) 链上校验余额：若不足则不要签发 permit，避免 permit 成功但 transferFrom 因余额失败（浪费 gas、体验差）
+        require(token.balanceOf(owner) >= amount, "Insufficient token balance");
+
+        // 4) 在代币合约上执行 EIP-2612：验证 (v,r,s) 是否为 owner 对「授权本合约 spender 额度 amount、在 deadline 前有效」的签名，并写入 allowance(owner, bank)
+        IERC20Permit(address(token)).permit(owner, address(this), amount, deadline, v, r, s);
+        // 5) 本合约作为被授权方，从 owner 划扣 amount 到本合约地址（与 permit 里的 value 一致，单位均为最小单位）
+        require(token.transferFrom(owner, address(this), amount), "Transfer failed");
+
+        // 6) 在 Bank 账本中累加该用户在 Vault 中的存款（仍为最小单位）
+        deposits[owner] += amount;
+        // 7) 若是首次存款，记入存款人列表便于遍历统计
+        if (!hasDeposited[owner]) {
+            hasDeposited[owner] = true;
+            depositors.push(owner);
+        }
+        // 8) 发出存款事件，供链下索引；permit 已消耗 allowance，通常额度归零或按代币实现扣减
+        emit Deposit(owner, amount, block.timestamp);
+        // 9) 与 deposit/withdraw 一致，返回 true 表示整笔流程成功
+        return true;
+    }
+
+    function getDepositBalance(address user) external view returns (uint256) {
+        return deposits[user] / (10 ** uint256(token.decimals()));
+    }
+
+    function getAllDepositors() external view returns (address[] memory) {
+        return depositors;
+    }
+
+    function getDepositorsCount() external view returns (uint256) {
+        return depositors.length;
+    }
+
+    function getTotalBalance() external view returns (uint256) {
+        return token.balanceOf(address(this)) / (10 ** uint256(token.decimals()));
     }
 }

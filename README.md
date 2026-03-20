@@ -13,6 +13,10 @@ Foundry consists of:
 
 https://book.getfoundry.sh/
 
+### 本项目
+
+- [XZX / TokenBankV2：Permit 存款、Gas 与赞助商 Relayer](docs/permit-gas-relayer.md) — `permitDeposit`、EIP-2612 链下签名与代付 gas 流程说明
+
 ## Usage
 
 ### Build

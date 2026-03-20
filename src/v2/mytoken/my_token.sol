@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 /**
  * @title MyToken - 自定义 ERC20 代币合约
- * @dev 实现完整的 ERC20 标准接口，包含铸造和燃烧功能
+ * @dev 实现完整的 ERC20 标准接口，包含铸造和燃烧功能；支持 EIP-2612 permit
  */
 contract MyToken {
     // ==================== 代币基本信息 ====================
@@ -28,6 +30,16 @@ contract MyToken {
     
     /// @notice 授权额度映射
     mapping(address => mapping(address => uint256)) public allowance;
+
+    /// @notice EIP-2612：每个 owner 的 permit 序号
+    mapping(address => uint256) public nonces;
+
+    /// @notice EIP-712 域分隔符（用于 permit 签名）
+    bytes32 public immutable DOMAIN_SEPARATOR;
+
+    /// @notice Permit 类型哈希（EIP-2612）
+    bytes32 public constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
     
     /// @notice 合约所有者（只有 owner 可以铸造新币）
     address public owner;
@@ -66,6 +78,16 @@ contract MyToken {
         
         // 发起量事件，from 为零地址表示这是铸造行为
         emit Transfer(address(0), msg.sender, totalSupply);
+
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(name)),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(this)
+            )
+        );
     }
     
     // ==================== 修饰器 ====================
@@ -176,6 +198,39 @@ contract MyToken {
         emit Transfer(from, to, valueInWei);
         
         return true;
+    }
+
+    /**
+     * @notice EIP-2612：通过链下签名设置 allowance（value 为最小单位，与 allowance 存储一致）
+     * @param tokenOwner 代币持有者（EIP-712 Permit.owner）
+     * @param spender 被授权地址
+     * @param value 授权额度（最小单位）
+     * @param deadline 签名过期时间（unix 秒）
+     * @param v 签名 v
+     * @param r 签名 r
+     * @param s 签名 s
+     */
+    function permit(
+        address tokenOwner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        require(block.timestamp <= deadline, "Permit expired");
+        require(spender != address(0), "Permit to zero address");
+
+        uint256 nonce = nonces[tokenOwner]++;
+        bytes32 structHash =
+            keccak256(abi.encode(PERMIT_TYPEHASH, tokenOwner, spender, value, nonce, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash));
+        address signer = ECDSA.recover(digest, v, r, s);
+        require(signer == tokenOwner, "Invalid permit signature");
+
+        allowance[tokenOwner][spender] = value;
+        emit Approval(tokenOwner, spender, value);
     }
     
     // ==================== 扩展功能 ====================
