@@ -1,46 +1,73 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {console2} from "forge-std/console2.sol";
 import {NFTMarket} from "../src/v2/mynft/NFTMarketV2.sol";
+import {XZXToken} from "../src/v2/mytoken/xzx_token.sol";
 import {MyTokenV2} from "../src/v2/mytoken/my_token_v2.sol";
 import {MyURINFT} from "../src/v2/mynft/MyBasicNFT.sol";
 
 contract NFTMarketV2Test is Test {
     NFTMarket public market;
-    MyTokenV2 public token;
+    XZXToken public token;
     MyURINFT public nft;
 
     address public seller;
     address public buyer;
 
+    uint256 internal constant SIGNER_PK = 0xA11CE;
+    address public signer;
+
     uint256 public tokenId = 1;
-    uint256 public price = 100; // 100 个 TOKEN（代币单位）
+    uint256 public price = 100;
+
+    bytes32 internal constant _EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 internal constant _PERMIT_BUY_TYPEHASH =
+        keccak256("PermitBuy(address buyer,uint256 listingId,uint256 deadline)");
 
     function setUp() public {
         seller = makeAddr("seller");
         buyer = makeAddr("buyer");
+        signer = vm.addr(SIGNER_PK);
 
-        // 部署 MyTokenV2（100万初始供应）
-        token = new MyTokenV2(1_000_000);
-        // 部署 MyURINFT
+        token = new XZXToken(1_000_000);
         nft = new MyURINFT();
-        // 部署 NFTMarket
-        market = new NFTMarket(address(token));
+        market = new NFTMarket(address(token), signer);
 
-        // 给卖家铸造 NFT
         nft.mint(seller, "ipfs://test-uri-1");
         tokenId = nft.currentTokenId();
 
-        // 给买家转 1000 个 TOKEN（代币单位）
-        token.transfer(buyer, 1000);
+        token.transfer(buyer, 1000 * 1e18);
 
         vm.label(seller, "seller");
         vm.label(buyer, "buyer");
         vm.label(address(market), "NFTMarket");
-        vm.label(address(token), "MyTokenV2");
+        vm.label(address(token), "XZXToken");
         vm.label(address(nft), "MyURINFT");
+        vm.label(signer, "whitelistSigner");
+    }
+
+    function _domainSeparator(NFTMarket m) internal view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                _EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes("NFTMarket")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(m)
+            )
+        );
+    }
+
+    function _permitDigest(address buyer_, uint256 listingId, uint256 deadline) internal view returns (bytes32) {
+        bytes32 structHash = keccak256(abi.encode(_PERMIT_BUY_TYPEHASH, buyer_, listingId, deadline));
+        return keccak256(abi.encodePacked(hex"1901", _domainSeparator(market), structHash));
+    }
+
+    function _signPermit(address buyer_, uint256 listingId, uint256 deadline) internal view returns (uint8 v, bytes32 r, bytes32 s) {
+        bytes32 digest = _permitDigest(buyer_, listingId, deadline);
+        return vm.sign(SIGNER_PK, digest);
     }
 
     // ==================== 上架测试 ====================
@@ -54,13 +81,8 @@ contract NFTMarketV2Test is Test {
 
         uint256 listingId = market.list(address(nft), tokenId, price);
 
-        (
-            address listedSeller,
-            address listedNftContract,
-            uint256 listedTokenId,
-            uint256 listedPriceInWei,
-            bool isActive
-        ) = market.listings(listingId);
+        (address listedSeller, address listedNftContract, uint256 listedTokenId, uint256 listedPriceInWei, bool isActive) =
+            market.listings(listingId);
 
         assertEq(listedSeller, seller);
         assertEq(listedNftContract, address(nft));
@@ -150,20 +172,35 @@ contract NFTMarketV2Test is Test {
         market.unlist(listingId);
     }
 
-    // ==================== buyNFT 购买测试 ====================
+    // ==================== buyNFT 已禁用 ====================
 
-    function test_BuyNFT_Success() public {
+    function test_BuyNFT_Reverts() public {
         vm.startPrank(seller);
         nft.approve(address(market), tokenId);
         uint256 listingId = market.list(address(nft), tokenId, price);
         vm.stopPrank();
 
         vm.startPrank(buyer);
-        token.approve(address(market), price);
-
-        vm.expectEmit(true, true, true, true);
-        emit NFTMarket.Sold(listingId, buyer, seller, address(nft), tokenId, price * 1e18);
+        token.approve(address(market), price * 1e18);
+        vm.expectRevert(NFTMarket.BuyNFTDisabled.selector);
         market.buyNFT(listingId, price);
+        vm.stopPrank();
+    }
+
+    // ==================== permitBuy ====================
+
+    function test_PermitBuy_Success() public {
+        vm.startPrank(seller);
+        nft.approve(address(market), tokenId);
+        uint256 listingId = market.list(address(nft), tokenId, price);
+        vm.stopPrank();
+
+        uint256 deadline = block.timestamp + 1 days;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(buyer, listingId, deadline);
+
+        vm.startPrank(buyer);
+        token.approve(address(market), price * 1e18);
+        market.permitBuy(listingId, price, deadline, v, r, s);
 
         assertEq(nft.ownerOf(tokenId), buyer);
         assertEq(token.balanceOf(seller), price * 1e18);
@@ -172,103 +209,240 @@ contract NFTMarketV2Test is Test {
         vm.stopPrank();
     }
 
-    function test_BuyNFT_RevertWhen_NotListed() public {
+    function test_PermitBuy_RevertWhen_NotListed() public {
+        uint256 deadline = block.timestamp + 1 days;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(buyer, 0, deadline);
+
         vm.startPrank(buyer);
-        token.approve(address(market), price);
+        token.approve(address(market), price * 1e18);
         vm.expectRevert("Not listed");
-        market.buyNFT(0, price);
+        market.permitBuy(0, price, deadline, v, r, s);
         vm.stopPrank();
     }
 
-    function test_BuyNFT_RevertWhen_InsufficientAmount() public {
+    function test_PermitBuy_RevertWhen_InsufficientAmount() public {
         vm.startPrank(seller);
         nft.approve(address(market), tokenId);
         uint256 listingId = market.list(address(nft), tokenId, price);
         vm.stopPrank();
 
+        uint256 deadline = block.timestamp + 1 days;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(buyer, listingId, deadline);
+
         vm.startPrank(buyer);
-        token.approve(address(market), price - 1);
+        token.approve(address(market), price * 1e18);
         vm.expectRevert("Insufficient amount");
-        market.buyNFT(listingId, price - 1);
+        market.permitBuy(listingId, price - 1, deadline, v, r, s);
         vm.stopPrank();
     }
 
-    function test_BuyNFT_RevertWhen_BoughtTwice() public {
+    function test_PermitBuy_RevertWhen_ExpiredDeadline() public {
         vm.startPrank(seller);
         nft.approve(address(market), tokenId);
         uint256 listingId = market.list(address(nft), tokenId, price);
         vm.stopPrank();
 
+        uint256 deadline = block.timestamp + 100;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(buyer, listingId, deadline);
+
+        vm.warp(block.timestamp + 101);
+
         vm.startPrank(buyer);
-        token.approve(address(market), price);
-        market.buyNFT(listingId, price);
-        vm.expectRevert("Not listed");
-        market.buyNFT(listingId, price);
+        token.approve(address(market), price * 1e18);
+        vm.expectRevert("Permit expired");
+        market.permitBuy(listingId, price, deadline, v, r, s);
         vm.stopPrank();
     }
 
-    // ==================== transferWithCallback 购买测试 ====================
+    function test_PermitBuy_RevertWhen_WrongSigner() public {
+        vm.startPrank(seller);
+        nft.approve(address(market), tokenId);
+        uint256 listingId = market.list(address(nft), tokenId, price);
+        vm.stopPrank();
+
+        uint256 deadline = block.timestamp + 1 days;
+        uint256 wrongPk = 0xB0B;
+        bytes32 digest = _permitDigest(buyer, listingId, deadline);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongPk, digest);
+
+        vm.startPrank(buyer);
+        token.approve(address(market), price * 1e18);
+        vm.expectRevert("Invalid permit signature");
+        market.permitBuy(listingId, price, deadline, v, r, s);
+        vm.stopPrank();
+    }
+
+    function test_PermitBuy_RevertWhen_BuyerMismatchInSignature() public {
+        vm.startPrank(seller);
+        nft.approve(address(market), tokenId);
+        uint256 listingId = market.list(address(nft), tokenId, price);
+        vm.stopPrank();
+
+        address other = makeAddr("other");
+        uint256 deadline = block.timestamp + 1 days;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(other, listingId, deadline);
+
+        vm.startPrank(buyer);
+        token.approve(address(market), price * 1e18);
+        vm.expectRevert("Invalid permit signature");
+        market.permitBuy(listingId, price, deadline, v, r, s);
+        vm.stopPrank();
+    }
+
+    function test_PermitBuy_RevertWhen_SignerZero() public {
+        NFTMarket m = new NFTMarket(address(token), address(0));
+
+        vm.startPrank(seller);
+        nft.approve(address(m), tokenId);
+        uint256 lid = m.list(address(nft), tokenId, price);
+        vm.stopPrank();
+
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 structHash = keccak256(abi.encode(_PERMIT_BUY_TYPEHASH, buyer, lid, deadline));
+        bytes32 dom = keccak256(
+            abi.encode(
+                _EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes("NFTMarket")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(m)
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked(hex"1901", dom, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SIGNER_PK, digest);
+
+        vm.startPrank(buyer);
+        token.approve(address(m), price * 1e18);
+        vm.expectRevert("Whitelist signer not set");
+        m.permitBuy(lid, price, deadline, v, r, s);
+        vm.stopPrank();
+    }
+
+    function test_SetWhitelistSigner() public {
+        address newSigner = makeAddr("newSigner");
+        market.setWhitelistSigner(newSigner);
+        assertEq(market.whitelistSigner(), newSigner);
+    }
+
+    // ==================== transferWithCallback（MyTokenV2） ====================
 
     function test_TransferWithCallback_BuySuccess() public {
+        MyTokenV2 t = new MyTokenV2(1_000_000);
+        NFTMarket m = new NFTMarket(address(t), signer);
+        t.transfer(buyer, 1000);
+
         vm.startPrank(seller);
-        nft.approve(address(market), tokenId);
-        uint256 listingId = market.list(address(nft), tokenId, price);
+        nft.approve(address(m), tokenId);
+        uint256 listingId = m.list(address(nft), tokenId, price);
         vm.stopPrank();
 
-        vm.startPrank(buyer);
-        bytes memory data = abi.encode(listingId);
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 structHash = keccak256(abi.encode(_PERMIT_BUY_TYPEHASH, buyer, listingId, deadline));
+        bytes32 dom = keccak256(
+            abi.encode(
+                _EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes("NFTMarket")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(m)
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked(hex"1901", dom, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SIGNER_PK, digest);
+        bytes memory data = abi.encode(listingId, deadline, v, r, s);
 
+        vm.startPrank(buyer);
         vm.expectEmit(true, true, true, true);
         emit NFTMarket.Sold(listingId, buyer, seller, address(nft), tokenId, price * 1e18);
-        token.transferWithCallback(address(market), price, data);
+        t.transferWithCallback(address(m), price, data);
 
         assertEq(nft.ownerOf(tokenId), buyer);
-        assertEq(token.balanceOf(seller), price * 1e18);
-        (,,,, bool isActive) = market.listings(listingId);
+        assertEq(t.balanceOf(seller), price * 1e18);
+        (,,,, bool isActive) = m.listings(listingId);
         assertFalse(isActive);
         vm.stopPrank();
     }
 
     function test_TransferWithCallback_RefundExcess() public {
+        MyTokenV2 t = new MyTokenV2(1_000_000);
+        NFTMarket m = new NFTMarket(address(t), signer);
+        t.transfer(buyer, 2000);
+
         vm.startPrank(seller);
-        nft.approve(address(market), tokenId);
-        uint256 listingId = market.list(address(nft), tokenId, price);
+        nft.approve(address(m), tokenId);
+        uint256 listingId = m.list(address(nft), tokenId, price);
         vm.stopPrank();
 
         uint256 overpay = price + 50;
-        vm.startPrank(buyer);
-        token.transfer(buyer, 50); // 确保有足够余额
-        uint256 buyerBalanceBefore = token.balanceOf(buyer);
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 structHash = keccak256(abi.encode(_PERMIT_BUY_TYPEHASH, buyer, listingId, deadline));
+        bytes32 dom = keccak256(
+            abi.encode(
+                _EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes("NFTMarket")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(m)
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked(hex"1901", dom, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SIGNER_PK, digest);
+        bytes memory data = abi.encode(listingId, deadline, v, r, s);
 
-        token.transferWithCallback(address(market), overpay, abi.encode(listingId));
+        vm.startPrank(buyer);
+        uint256 buyerBalanceBefore = t.balanceOf(buyer);
+        t.transferWithCallback(address(m), overpay, data);
 
         assertEq(nft.ownerOf(tokenId), buyer);
-        assertEq(token.balanceOf(seller), price * 1e18);
-        assertEq(token.balanceOf(buyer), buyerBalanceBefore - overpay * 1e18 + 50 * 1e18);
+        assertEq(t.balanceOf(seller), price * 1e18);
+        assertEq(t.balanceOf(buyer), buyerBalanceBefore - overpay * 1e18 + 50 * 1e18);
         vm.stopPrank();
     }
 
-    function test_TransferWithCallback_RevertWhen_InvalidData() public {
+    function test_TransferWithCallback_RevertWhen_InvalidDataDecode() public {
+        MyTokenV2 t = new MyTokenV2(1_000_000);
+        NFTMarket m = new NFTMarket(address(t), signer);
+        t.transfer(buyer, 1000);
+
         vm.startPrank(seller);
-        nft.approve(address(market), tokenId);
-        market.list(address(nft), tokenId, price);
+        nft.approve(address(m), tokenId);
+        m.list(address(nft), tokenId, price);
         vm.stopPrank();
 
         vm.startPrank(buyer);
-        vm.expectRevert("Invalid data: need listingId");
-        token.transferWithCallback(address(market), price, "");
+        vm.expectRevert();
+        t.transferWithCallback(address(m), price, "");
         vm.stopPrank();
     }
 
     function test_TransferWithCallback_RevertWhen_InsufficientAmount() public {
+        MyTokenV2 t = new MyTokenV2(1_000_000);
+        NFTMarket m = new NFTMarket(address(t), signer);
+        t.transfer(buyer, 1000);
+
         vm.startPrank(seller);
-        nft.approve(address(market), tokenId);
-        uint256 listingId = market.list(address(nft), tokenId, price);
+        nft.approve(address(m), tokenId);
+        uint256 listingId = m.list(address(nft), tokenId, price);
         vm.stopPrank();
+
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 structHash = keccak256(abi.encode(_PERMIT_BUY_TYPEHASH, buyer, listingId, deadline));
+        bytes32 dom = keccak256(
+            abi.encode(
+                _EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes("NFTMarket")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(m)
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked(hex"1901", dom, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SIGNER_PK, digest);
+        bytes memory data = abi.encode(listingId, deadline, v, r, s);
 
         vm.startPrank(buyer);
         vm.expectRevert("Insufficient amount");
-        token.transferWithCallback(address(market), price - 1, abi.encode(listingId));
+        t.transferWithCallback(address(m), price - 1, data);
         vm.stopPrank();
     }
 
@@ -280,24 +454,44 @@ contract NFTMarketV2Test is Test {
         uint256 listingId = market.list(address(nft), tokenId, price);
         vm.stopPrank();
 
+        uint256 deadline = block.timestamp + 1 days;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(buyer, listingId, deadline);
+
         vm.startPrank(buyer);
-        token.approve(address(market), price);
-        market.buyNFT(listingId, price);
+        token.approve(address(market), price * 1e18);
+        market.permitBuy(listingId, price, deadline, v, r, s);
         vm.stopPrank();
 
-        assertEq(token.balanceOf(address(market)), 0, "Market should hold no tokens after buyNFT");
+        assertEq(token.balanceOf(address(market)), 0, "Market should hold no tokens after permitBuy");
 
-        // 再次上架并用 transferWithCallback 购买
+        MyTokenV2 t = new MyTokenV2(1_000_000);
+        NFTMarket m = new NFTMarket(address(t), signer);
+        t.transfer(seller, 1000);
+
         vm.startPrank(buyer);
-        nft.approve(address(market), tokenId);
-        listingId = market.list(address(nft), tokenId, price);
+        nft.approve(address(m), tokenId);
+        listingId = m.list(address(nft), tokenId, price);
         vm.stopPrank();
 
-        token.transfer(seller, 1000);
+        deadline = block.timestamp + 1 days;
+        bytes32 structHash = keccak256(abi.encode(_PERMIT_BUY_TYPEHASH, seller, listingId, deadline));
+        bytes32 dom = keccak256(
+            abi.encode(
+                _EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes("NFTMarket")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(m)
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked(hex"1901", dom, structHash));
+        (v, r, s) = vm.sign(SIGNER_PK, digest);
+        bytes memory data = abi.encode(listingId, deadline, v, r, s);
+
         vm.startPrank(seller);
-        token.transferWithCallback(address(market), price, abi.encode(listingId));
+        t.transferWithCallback(address(m), price, data);
         vm.stopPrank();
 
-        assertEq(token.balanceOf(address(market)), 0, "Market should hold no tokens after transferWithCallback");
+        assertEq(t.balanceOf(address(m)), 0, "Market should hold no tokens after transferWithCallback");
     }
 }

@@ -3,13 +3,17 @@ pragma solidity ^0.8.24;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
 
 /**
  * @title TokenBankV2
  * @dev 面向标准 ERC20（含 OpenZeppelin ERC20Permit）。deposit / withdraw / permitDeposit 的 amount 均为最小单位。
+ * @dev depositWithPermit2 使用 Uniswap Permit2 Allowance Transfer：用户需先对 Permit2 合约 ERC20 approve，再签 PermitSingle（spender 为本合约）。
  */
 contract TokenBankV2 {
     IERC20Metadata public immutable token;
+    IPermit2 public immutable permit2;
 
     mapping(address => uint256) public deposits;
     address[] public depositors;
@@ -18,9 +22,11 @@ contract TokenBankV2 {
     event Deposit(address indexed user, uint256 amount, uint256 timestamp);
     event Withdraw(address indexed user, uint256 amount, uint256 timestamp);
 
-    constructor(address _tokenAddress) {
+    constructor(address _tokenAddress, address _permit2) {
         require(_tokenAddress != address(0), "Invalid token address");
+        require(_permit2 != address(0), "Invalid permit2 address");
         token = IERC20Metadata(_tokenAddress);
+        permit2 = IPermit2(_permit2);
     }
 
     /**
@@ -93,6 +99,37 @@ contract TokenBankV2 {
         // 8) 发出存款事件，供链下索引；permit 已消耗 allowance，通常额度归零或按代币实现扣减
         emit Deposit(owner, amount, block.timestamp);
         // 9) 与 deposit/withdraw 一致，返回 true 表示整笔流程成功
+        return true;
+    }
+
+    /**
+     * @notice Permit2 签名授权后存款（最小单位，与 permitSingle.details.amount 一致）
+     * @param owner 代币持有者 / Permit2 签名者
+     * @param permitSingle EIP-712 签名的单代币授权（details.token、spender 须与本合约及构造函数 token 一致）
+     * @param signature owner 对 permitSingle 的签名
+     * @dev 生产环境须先 token.approve(permit2, …)；链下 domain.verifyingContract 为 Permit2 地址。
+     */
+    function depositWithPermit2(
+        address owner,
+        IAllowanceTransfer.PermitSingle calldata permitSingle,
+        bytes calldata signature
+    ) external returns (bool) {
+        uint256 amount = uint256(permitSingle.details.amount);
+        require(amount > 0, "Deposit amount must be greater than 0");
+        require(owner != address(0), "Invalid owner");
+        require(permitSingle.details.token == address(token), "Token mismatch");
+        require(permitSingle.spender == address(this), "Spender must be bank");
+        require(token.balanceOf(owner) >= amount, "Insufficient token balance");
+
+        permit2.permit(owner, permitSingle, signature);
+        permit2.transferFrom(owner, address(this), permitSingle.details.amount, address(token));
+
+        deposits[owner] += amount;
+        if (!hasDeposited[owner]) {
+            hasDeposited[owner] = true;
+            depositors.push(owner);
+        }
+        emit Deposit(owner, amount, block.timestamp);
         return true;
     }
 

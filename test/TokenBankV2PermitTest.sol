@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {XZXToken} from "../src/v2/mytoken/xzx_token.sol";
 import {TokenBankV2} from "../src/v2/mytoken/token_bank_v2.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {MockPermit2} from "./mocks/MockPermit2.sol";
 
 /**
  * @title TokenBankV2PermitTest
@@ -12,6 +13,7 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
  */
 contract TokenBankV2PermitTest is Test {
     XZXToken internal token;
+    MockPermit2 internal mockPermit2;
     TokenBankV2 internal bank;
 
     /// @dev 测试用私钥，对应「持币用户」EOA；生产环境由真实钱包签名，不会在测试里写死私钥。
@@ -31,7 +33,8 @@ contract TokenBankV2PermitTest is Test {
 
         // 部署 XZX（整币初始供应 100 万）与 Bank
         token = new XZXToken(1_000_000);
-        bank = new TokenBankV2(address(token));
+        mockPermit2 = new MockPermit2();
+        bank = new TokenBankV2(address(token), address(mockPermit2));
 
         // 给 owner 一些 XZX，否则无法 transferFrom
         token.transfer(owner, 10_000 * 10 ** token.decimals());
