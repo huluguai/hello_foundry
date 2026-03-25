@@ -28,6 +28,11 @@ import {MemeFactory} from "../src/v2/meme/MemeFactory.sol";
  *   `source .env && forge script script/DeployMemeFactory.s.sol:DeployMemeFactory --rpc-url sepolia --broadcast --verify -vvvv`
  * - 显式指定项目方地址（可与部署者不同）：
  *   `PROJECT_RECIPIENT=0x... forge script ... --rpc-url sepolia --broadcast`
+ 
+    MemeFactory deployed at: 0xe59a723aB198aF185c970957386faf4e27cBAd63
+    MemeToken implementation: 0x8f628fcB6986aBDe79b0a1952d573c9364ae22E3
+    Project recipient (1% fees): 0xfd8890Be36244f4270602B1F46717882c5ffDf47
+    Deployer: 0xfd8890Be36244f4270602B1F46717882c5ffDf47
  */
 contract DeployMemeFactory is Script {
     /**
