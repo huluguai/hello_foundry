@@ -21,7 +21,8 @@ contract NFTMarket is Ownable, EIP712, ITokenRecipient {
         keccak256("PermitBuy(address buyer,uint256 listingId,uint256 deadline)");
 
     IERC20 public immutable token;
-    uint8 private immutable _decimals;
+    /// @dev 10 ** token.decimals()，避免每次 list / 购买重复幂运算
+    uint256 private immutable tokenUnit;
 
     address public whitelistSigner;
 
@@ -43,11 +44,29 @@ contract NFTMarket is Ownable, EIP712, ITokenRecipient {
     event WhitelistSignerUpdated(address indexed newSigner);
 
     error BuyNFTDisabled();
+    error InvalidTokenAddress();
+    error InvalidNFTContract();
+    error PriceMustBePositive();
+    error NotOwnerNorApproved();
+    error AlreadyListed();
+    error NotListed();
+    error NotLister();
+    error OnlyPaymentToken();
+    error TokensMustBeSentToMarket();
+    error WhitelistSignerNotSet();
+    error PermitExpired();
+    error InvalidPermitSignature();
+    error InsufficientAmount();
+    error NFTNoLongerForSale();
 
     constructor(address _tokenAddress, address initialWhitelistSigner) Ownable(msg.sender) EIP712("NFTMarket", "1") {
-        require(_tokenAddress != address(0), "Invalid token address");
+        if (_tokenAddress == address(0)) revert InvalidTokenAddress();
         token = IERC20(_tokenAddress);
-        _decimals = IERC20Metadata(_tokenAddress).decimals();
+        uint256 unit;
+        unchecked {
+            unit = 10 ** uint256(IERC20Metadata(_tokenAddress).decimals());
+        }
+        tokenUnit = unit;
         whitelistSigner = initialWhitelistSigner;
     }
 
@@ -57,22 +76,26 @@ contract NFTMarket is Ownable, EIP712, ITokenRecipient {
     }
 
     function list(address _nftContract, uint256 _tokenId, uint256 _price) external returns (uint256) {
-        require(_nftContract != address(0), "Invalid NFT contract");
-        require(_price > 0, "Price must be > 0");
+        if (_nftContract == address(0)) revert InvalidNFTContract();
+        if (_price == 0) revert PriceMustBePositive();
 
         IERC721 nft = IERC721(_nftContract);
         address owner = nft.ownerOf(_tokenId);
-        require(
-            owner == msg.sender || nft.isApprovedForAll(owner, msg.sender) || nft.getApproved(_tokenId) == msg.sender,
-            "Not owner nor approved"
-        );
+        if (!(owner == msg.sender || nft.isApprovedForAll(owner, msg.sender) || nft.getApproved(_tokenId) == msg.sender)) {
+            revert NotOwnerNorApproved();
+        }
 
         bytes32 key = keccak256(abi.encode(_nftContract, _tokenId));
         uint256 existingId = activeListingByNft[key];
-        require(existingId == 0 || !listings[existingId - 1].isActive, "Already listed");
+        if (existingId != 0 && listings[existingId - 1].isActive) {
+            revert AlreadyListed();
+        }
 
-        uint256 priceInWei = _price * (10 ** uint256(_decimals));
-        uint256 listingId = nextListingId++;
+        uint256 priceInWei = _price * tokenUnit;
+        uint256 listingId = nextListingId;
+        unchecked {
+            nextListingId = listingId + 1;
+        }
 
         listings[listingId] = Listing({seller: owner, nftContract: _nftContract, tokenId: _tokenId, priceInWei: priceInWei, isActive: true});
         activeListingByNft[key] = listingId + 1;
@@ -83,11 +106,12 @@ contract NFTMarket is Ownable, EIP712, ITokenRecipient {
 
     function unlist(uint256 _listingId) external {
         Listing storage l = listings[_listingId];
-        require(l.isActive, "Not listed");
-        require(l.seller == msg.sender, "Not lister");
+        if (!l.isActive) revert NotListed();
+        if (l.seller != msg.sender) revert NotLister();
 
         l.isActive = false;
-        delete activeListingByNft[keccak256(abi.encode(l.nftContract, l.tokenId))];
+        bytes32 nftKey = keccak256(abi.encode(l.nftContract, l.tokenId));
+        delete activeListingByNft[nftKey];
 
         emit Unlisted(_listingId, msg.sender);
     }
@@ -110,8 +134,8 @@ contract NFTMarket is Ownable, EIP712, ITokenRecipient {
      * @notice transferWithCallback 回调；data = abi.encode(listingId, deadline, v, r, s)
      */
     function tokensReceived(address from, address to, uint256 amount, bytes calldata data) external returns (bool) {
-        require(msg.sender == address(token), "Only payment token");
-        require(to == address(this), "Tokens must be sent to this contract");
+        if (msg.sender != address(token)) revert OnlyPaymentToken();
+        if (to != address(this)) revert TokensMustBeSentToMarket();
 
         (uint256 listingId, uint256 deadline, uint8 v, bytes32 r, bytes32 s) = abi.decode(data, (uint256, uint256, uint8, bytes32, bytes32));
         _verifyPermitBuy(from, listingId, deadline, v, r, s);
@@ -121,53 +145,55 @@ contract NFTMarket is Ownable, EIP712, ITokenRecipient {
     }
 
     function getPriceInTokenUnits(uint256 _listingId) external view returns (uint256) {
-        return listings[_listingId].priceInWei / (10 ** uint256(_decimals));
+        return listings[_listingId].priceInWei / tokenUnit;
     }
 
     function _verifyPermitBuy(address buyer, uint256 listingId, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal view {
-        require(whitelistSigner != address(0), "Whitelist signer not set");
-        require(block.timestamp <= deadline, "Permit expired");
+        if (whitelistSigner == address(0)) revert WhitelistSignerNotSet();
+        if (block.timestamp > deadline) revert PermitExpired();
         bytes32 structHash = keccak256(abi.encode(PERMIT_BUY_TYPEHASH, buyer, listingId, deadline));
         bytes32 digest = _hashTypedDataV4(structHash);
-        address recovered = ECDSA.recover(digest, v, r, s);
-        require(recovered == whitelistSigner, "Invalid permit signature");
+        if (ECDSA.recover(digest, v, r, s) != whitelistSigner) {
+            revert InvalidPermitSignature();
+        }
     }
 
     function _executePurchaseDirect(address buyer, uint256 listingId, uint256 amountTokenUnits) internal {
         Listing storage l = listings[listingId];
-        require(l.isActive, "Not listed");
+        if (!l.isActive) revert NotListed();
 
         IERC721 nft = IERC721(l.nftContract);
-        require(nft.ownerOf(l.tokenId) == l.seller, "NFT no longer for sale");
+        if (nft.ownerOf(l.tokenId) != l.seller) revert NFTNoLongerForSale();
 
-        uint256 amountInWei = amountTokenUnits * (10 ** uint256(_decimals));
-        require(amountInWei >= l.priceInWei, "Insufficient amount");
+        uint256 amountInWei = amountTokenUnits * tokenUnit;
+        if (amountInWei < l.priceInWei) revert InsufficientAmount();
 
-        // 标准 ERC20：金额为最小单位（wei）；与自定义 MyToken 系列「整币入参」不兼容
+        bytes32 nftKey = keccak256(abi.encode(l.nftContract, l.tokenId));
+
         token.safeTransferFrom(buyer, l.seller, l.priceInWei);
         nft.transferFrom(l.seller, buyer, l.tokenId);
 
         l.isActive = false;
-        delete activeListingByNft[keccak256(abi.encode(l.nftContract, l.tokenId))];
+        delete activeListingByNft[nftKey];
 
         emit Sold(listingId, buyer, l.seller, l.nftContract, l.tokenId, l.priceInWei);
     }
 
     function _executePurchaseCallback(address buyer, uint256 listingId, uint256 amountWei) internal {
         Listing storage l = listings[listingId];
-        require(l.isActive, "Not listed");
+        if (!l.isActive) revert NotListed();
 
         IERC721 nft = IERC721(l.nftContract);
-        require(nft.ownerOf(l.tokenId) == l.seller, "NFT no longer for sale");
-        require(amountWei >= l.priceInWei, "Insufficient amount");
+        if (nft.ownerOf(l.tokenId) != l.seller) revert NFTNoLongerForSale();
+        if (amountWei < l.priceInWei) revert InsufficientAmount();
 
-        // transferWithCallback 仅适用于 MyTokenV2：transfer 入参为整币单位
-        uint256 priceInTokenUnits = l.priceInWei / (10 ** uint256(_decimals));
+        uint256 priceInWei = l.priceInWei;
+        bytes32 nftKey = keccak256(abi.encode(l.nftContract, l.tokenId));
+        uint256 priceInTokenUnits = priceInWei / tokenUnit;
         token.safeTransfer(l.seller, priceInTokenUnits);
 
-        if (amountWei > l.priceInWei) {
-            uint256 refundInWei = amountWei - l.priceInWei;
-            uint256 refundInTokenUnits = refundInWei / (10 ** uint256(_decimals));
+        if (amountWei > priceInWei) {
+            uint256 refundInTokenUnits = (amountWei - priceInWei) / tokenUnit;
             if (refundInTokenUnits > 0) {
                 token.safeTransfer(buyer, refundInTokenUnits);
             }
@@ -176,8 +202,8 @@ contract NFTMarket is Ownable, EIP712, ITokenRecipient {
         nft.transferFrom(l.seller, buyer, l.tokenId);
 
         l.isActive = false;
-        delete activeListingByNft[keccak256(abi.encode(l.nftContract, l.tokenId))];
+        delete activeListingByNft[nftKey];
 
-        emit Sold(listingId, buyer, l.seller, l.nftContract, l.tokenId, l.priceInWei);
+        emit Sold(listingId, buyer, l.seller, l.nftContract, l.tokenId, priceInWei);
     }
 }

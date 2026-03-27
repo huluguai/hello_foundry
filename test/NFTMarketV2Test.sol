@@ -97,14 +97,14 @@ contract NFTMarketV2Test is Test {
 
     function test_List_RevertWhen_NotOwner() public {
         vm.prank(buyer);
-        vm.expectRevert("Not owner nor approved");
+        vm.expectRevert(NFTMarket.NotOwnerNorApproved.selector);
         market.list(address(nft), tokenId, price);
     }
 
     function test_List_RevertWhen_ZeroNftContract() public {
         vm.startPrank(seller);
         nft.approve(address(market), tokenId);
-        vm.expectRevert("Invalid NFT contract");
+        vm.expectRevert(NFTMarket.InvalidNFTContract.selector);
         market.list(address(0), tokenId, price);
         vm.stopPrank();
     }
@@ -112,7 +112,7 @@ contract NFTMarketV2Test is Test {
     function test_List_RevertWhen_ZeroPrice() public {
         vm.startPrank(seller);
         nft.approve(address(market), tokenId);
-        vm.expectRevert("Price must be > 0");
+        vm.expectRevert(NFTMarket.PriceMustBePositive.selector);
         market.list(address(nft), tokenId, 0);
         vm.stopPrank();
     }
@@ -121,7 +121,7 @@ contract NFTMarketV2Test is Test {
         vm.startPrank(seller);
         nft.approve(address(market), tokenId);
         market.list(address(nft), tokenId, price);
-        vm.expectRevert("Already listed");
+        vm.expectRevert(NFTMarket.AlreadyListed.selector);
         market.list(address(nft), tokenId, price + 1);
         vm.stopPrank();
     }
@@ -157,7 +157,7 @@ contract NFTMarketV2Test is Test {
 
     function test_Unlist_RevertWhen_NotListed() public {
         vm.prank(seller);
-        vm.expectRevert("Not listed");
+        vm.expectRevert(NFTMarket.NotListed.selector);
         market.unlist(0);
     }
 
@@ -168,7 +168,7 @@ contract NFTMarketV2Test is Test {
         vm.stopPrank();
 
         vm.prank(buyer);
-        vm.expectRevert("Not lister");
+        vm.expectRevert(NFTMarket.NotLister.selector);
         market.unlist(listingId);
     }
 
@@ -215,7 +215,7 @@ contract NFTMarketV2Test is Test {
 
         vm.startPrank(buyer);
         token.approve(address(market), price * 1e18);
-        vm.expectRevert("Not listed");
+        vm.expectRevert(NFTMarket.NotListed.selector);
         market.permitBuy(0, price, deadline, v, r, s);
         vm.stopPrank();
     }
@@ -231,7 +231,7 @@ contract NFTMarketV2Test is Test {
 
         vm.startPrank(buyer);
         token.approve(address(market), price * 1e18);
-        vm.expectRevert("Insufficient amount");
+        vm.expectRevert(NFTMarket.InsufficientAmount.selector);
         market.permitBuy(listingId, price - 1, deadline, v, r, s);
         vm.stopPrank();
     }
@@ -249,7 +249,7 @@ contract NFTMarketV2Test is Test {
 
         vm.startPrank(buyer);
         token.approve(address(market), price * 1e18);
-        vm.expectRevert("Permit expired");
+        vm.expectRevert(NFTMarket.PermitExpired.selector);
         market.permitBuy(listingId, price, deadline, v, r, s);
         vm.stopPrank();
     }
@@ -267,7 +267,7 @@ contract NFTMarketV2Test is Test {
 
         vm.startPrank(buyer);
         token.approve(address(market), price * 1e18);
-        vm.expectRevert("Invalid permit signature");
+        vm.expectRevert(NFTMarket.InvalidPermitSignature.selector);
         market.permitBuy(listingId, price, deadline, v, r, s);
         vm.stopPrank();
     }
@@ -284,7 +284,7 @@ contract NFTMarketV2Test is Test {
 
         vm.startPrank(buyer);
         token.approve(address(market), price * 1e18);
-        vm.expectRevert("Invalid permit signature");
+        vm.expectRevert(NFTMarket.InvalidPermitSignature.selector);
         market.permitBuy(listingId, price, deadline, v, r, s);
         vm.stopPrank();
     }
@@ -313,7 +313,7 @@ contract NFTMarketV2Test is Test {
 
         vm.startPrank(buyer);
         token.approve(address(m), price * 1e18);
-        vm.expectRevert("Whitelist signer not set");
+        vm.expectRevert(NFTMarket.WhitelistSignerNotSet.selector);
         m.permitBuy(lid, price, deadline, v, r, s);
         vm.stopPrank();
     }
@@ -441,7 +441,7 @@ contract NFTMarketV2Test is Test {
         bytes memory data = abi.encode(listingId, deadline, v, r, s);
 
         vm.startPrank(buyer);
-        vm.expectRevert("Insufficient amount");
+        vm.expectRevert(NFTMarket.InsufficientAmount.selector);
         t.transferWithCallback(address(m), price - 1, data);
         vm.stopPrank();
     }
