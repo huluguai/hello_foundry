@@ -6,6 +6,7 @@
 
 - [forge-std](https://github.com/foundry-rs/forge-std)
 - [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts)
+- [OpenZeppelin Contracts Upgradeable](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable)（`lib/openzeppelin-contracts-upgradeable`，与主库 v5.6 配套）
 - [Uniswap Permit2](https://github.com/Uniswap/permit2)（`permit2/` remapping）
 
 克隆后若子模块未就绪：
@@ -21,6 +22,8 @@ git submodule update --init --recursive
 | `v2/mytoken/token_bank_v2.sol` — **TokenBankV2** | 标准 `deposit` / `withdraw`；**EIP-2612** 离线授权由第三方代调的 `permitDeposit`；**Permit2 Allowance Transfer** 的 `depositWithPermit2`（需先对 Permit2 合约 `approve` 代币） |
 | `v2/mytoken/xzx_token.sol` — **XZXToken** | 带 `ERC20Permit` 的示例代币，部署脚本用于与 TokenBankV2 联署 |
 | `v2/mynft/NFTMarketV2.sol` — **NFTMarket** | 上架 / 下架；买家通过 `permitBuy` 或 `transferWithCallback`（`ITokenRecipient`）完成 ERC20 支付，购买需 EIP-712 白名单签名 |
+| `v2/mynft/upgradeable/NFTMarketUpgradeableV1.sol` / `NFTMarketUpgradeableV2.sol` | 与 **NFTMarket** 对齐的 **UUPS 可升级**市场；V2 增加卖家签名 `listWithSig`（`PermitList` EIP-712，含 `seller/nftContract/tokenId/price/nonce/deadline`）；用户交互地址为 **代理** |
+| `v2/mynft/upgradeable/MyURINFTUpgradeable.sol` | **UUPS 可升级** ERC721 + URIStorage + 可治理升级 |
 | `v2/mynft/AirdopMerkleNFTMarket.sol` — **AirdopMerkleNFTMarket** | 上架 / 下架；**Merkle 白名单**折后购（`multicall` + `permitPrePay` + `claimNFT`，支付为 `ERC20Permit`）或原价 `buyNFT`；详见下文「默克尔白名单」 |
 | `v2/mynft/MyBasicNFT.sol` | 简单 ERC721，供市场测试使用 |
 
@@ -31,12 +34,15 @@ git submodule update --init --recursive
 - `TokenBankV2PermitTest.sol` — EIP-2612 `permitDeposit`
 - `TokenBankV2Permit2Test.sol` — Permit2 `depositWithPermit2`（含 `mocks/MockPermit2.sol`）
 - `NFTMarketV2Test.sol` — 市场与白名单购买流程
+- `NFTMarketUpgradeable.t.sol` — 可升级市场代理、`upgradeTo` V2、`listWithSig` 与 `permitBuy` / `transferWithCallback`
+- `MyURINFTUpgradeable.t.sol` — 可升级 ERC721 与升级权限
 - `AirdopMerkleNFTMarket.t.sol` — Merkle 白名单 + multicall + Permit 折后购与相关边界情况
 
 ## 文档
 
 - [TokenBankV2：Permit、Gas 与 Relayer 说明](docs/permit-gas-relayer.md)
 - [AirdopMerkleNFTMarket：DApp 调用关系与时序](docs/AirdopMerkleNFTMarket-dapp-callflow.md)
+- [可升级 NFT 与市场：升级后调用关系与说明](docs/UpgradeableNFTMarket.md)
 
 ## 默克尔白名单（`AirdopMerkleNFTMarket`）
 
@@ -66,7 +72,7 @@ git submodule update --init --recursive
 ## 配置
 
 - Solidity：`0.8.24`（见 `foundry.toml`）
-- Remappings：`@openzeppelin/`、`permit2/`
+- Remappings：`@openzeppelin/contracts-upgradeable/`、`@openzeppelin/contracts/`、`@openzeppelin/`、`permit2/`（见 `foundry.toml`）
 - 根目录 `.env` 供 Foundry 替换变量：`RPC_URL`、`ETHERSCAN_API_KEY` 等（勿提交私钥到公开仓库）
 
 部署脚本常用环境变量：
@@ -77,8 +83,49 @@ git submodule update --init --recursive
 | `INITIAL_SUPPLY` | `DeployTokenBankV2` 中 XZXToken 初始发行量（整币数量，默认 `1000000`） |
 | `PAYMENT_TOKEN_ADDRESS` | `DeployNFTMarketV2` 支付用 ERC20（需 `decimals()`） |
 | `WHITELIST_SIGNER` | 签发 `PermitBuy` 的地址；未设时默认为部署者地址 |
+| `NFT_MARKET_PROXY` | `UpgradeNFTMarketToV2`：已部署的市场 **代理**地址 |
+| `NFT_NAME` / `NFT_SYMBOL` | `DeployUpgradeableMyURINFT` 可选，默认 `MyURINFT` / `MUN` |
 
 链上 Permit2 在 Ethereum / Sepolia 等与官方部署同址：`0x000000000022D473030F116dDEE9F6B43aC78BA3`（脚本内常量）。
+
+### 可升级 NFT 与市场（Sepolia）
+
+部署后把下列地址写进本表并在浏览器上开源验证（代理需在 Etherscan 「Read/Write as Proxy」中指向当前实现）。
+
+| 角色 | 地址（待部署后填写） |
+|------|----------------------|
+| NFT 市场 **代理**（对外使用） | `0xDDae7D607bB335093144EC1aEA1671A3b59E9d55` |
+| 市场实现 **V1** | `0x7aA18BBA80593D3f0ced5f190D82b43cDCc38974` |
+| 市场实现 **V2** | `0xD9FC5ced60E7b0D89CCe17004D289490dC16b91B` |
+| MyURINFT **代理**（可选） | `0xC1D05b658336f1A3A6d2233524C8e9c1C326171f` |
+| MyURINFT **实现**（可选） | `0xc5411e6c21B8330d51F567a3E619772684729e97` |
+
+浏览器示例：`https://sepolia.etherscan.io/address/<REPLACE_WITH_PROXY>#code`
+
+部署市场（V1 实现 + 代理，`PAYMENT_TOKEN_ADDRESS` 必填）：
+
+```shell
+source .env && forge script script/DeployUpgradeableNFTMarket.s.sol:DeployUpgradeableNFTMarket --rpc-url sepolia --broadcast --verify -vvvv
+```
+
+升级至 V2（`PRIVATE_KEY` 须为代理的 `owner`）：
+
+```shell
+export NFT_MARKET_PROXY=0xDDae7D607bB335093144EC1aEA1671A3b59E9d55
+source .env && forge script script/UpgradeNFTMarketToV2.s.sol:UpgradeNFTMarketToV2 --rpc-url sepolia --broadcast --verify -vvvv
+```
+
+部署可升级 ERC721：
+
+```shell
+source .env && forge script script/DeployUpgradeableMyURINFT.s.sol:DeployUpgradeableMyURINFT --rpc-url sepolia --broadcast --verify -vvvv
+```
+
+单独验证实现合约（示例）：
+
+```shell
+forge verify-contract <IMPL> src/v2/mynft/upgradeable/NFTMarketUpgradeableV2.sol:NFTMarketUpgradeableV2 --chain sepolia --watch
+```
 
 ## 常用命令
 
