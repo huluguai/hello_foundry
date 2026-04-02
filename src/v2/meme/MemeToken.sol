@@ -12,7 +12,7 @@ import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.s
  * - `price` 语义与工厂一致：每 **1 枚完整代币**（10**decimals 个最小单位）应付的 wei。
  */
 contract MemeToken is Initializable {
-    /// @notice 唯一允许调用 `initialize` / `mint` 的工厂合约地址（实现合约构造时写入，克隆通过 delegatecall 共用该 immutable）
+    /// @notice 唯一允许调用 `initialize` / `mint` / `mintTo` 的工厂合约地址（实现合约构造时写入，克隆通过 delegatecall 共用该 immutable）
     address public immutable FACTORY;
 
     /// @notice ERC20 名称，初始化时写死为 "Meme"
@@ -118,6 +118,23 @@ contract MemeToken is Initializable {
         }
         _balances[to] += perMint;
         emit Transfer(address(0), to, perMint);
+    }
+
+    /**
+     * @notice 由工厂铸造指定数量给某地址（用于与铸造费同比例配套的流动性代币）
+     * @param to 接收地址
+     * @param amount 最小单位数量，须大于 0
+     */
+    function mintTo(address to, uint256 amount) external {
+        require(msg.sender == FACTORY, "MemeToken: not factory");
+        require(amount > 0, "MemeToken: zero mint");
+        require(_totalSupply + amount <= maxSupply, "MemeToken: cap exceeded");
+
+        unchecked {
+            _totalSupply += amount;
+        }
+        _balances[to] += amount;
+        emit Transfer(address(0), to, amount);
     }
 
     function _transfer(address from, address to, uint256 amount) private {
