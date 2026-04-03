@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Script, console} from "forge-std/Script.sol";
+import {Script, console} from "../lib/forge-std/src/Script.sol";
 import {XZXToken} from "../src/v2/mytoken/xzx_token.sol";
 import {TokenBankV2} from "../src/v2/mytoken/token_bank_v2.sol";
 

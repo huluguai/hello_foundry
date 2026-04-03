@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Script, console} from "forge-std/Script.sol";
+import {Script, console} from "../lib/forge-std/src/Script.sol";
 import {MemeFactory} from "../src/v2/meme/MemeFactory.sol";
 
 /**

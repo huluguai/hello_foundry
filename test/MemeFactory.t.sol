@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test} from "../lib/forge-std/src/Test.sol";
 import {MemeFactory} from "../src/v2/meme/MemeFactory.sol";
 import {MemeToken} from "../src/v2/meme/MemeToken.sol";
 import {MockUniswapFactory, MockUniswapV2Router, MockPair} from "./mocks/MockUniswap.sol";

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test} from "../lib/forge-std/src/Test.sol";
 import {AirdopMerkleNFTMarket} from "../src/v2/mynft/AirdopMerkleNFTMarket.sol";
 import {XZXToken} from "../src/v2/mytoken/xzx_token.sol";
 import {MyURINFT} from "../src/v2/mynft/MyBasicNFT.sol";

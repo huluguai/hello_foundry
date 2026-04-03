@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Script, console} from "forge-std/Script.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Script, console} from "../lib/forge-std/src/Script.sol";
+import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {NFTMarketUpgradeableV1} from "../src/v2/mynft/upgradeable/NFTMarketUpgradeableV1.sol";
 
 /**

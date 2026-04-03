@@ -2,9 +2,9 @@
 pragma solidity ^0.8.13;
 
 
-import { Test } from "forge-std/Test.sol";
+import { Test } from "../lib/forge-std/src/Test.sol";
 import { Bank } from "../src/Bank.sol";
-import {console2} from "forge-std/console2.sol"; // 导入 console2
+import {console2} from "../lib/forge-std/src/console2.sol"; // 导入 console2
 
 
 contract BankTest is Test {
