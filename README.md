@@ -8,6 +8,7 @@
 - [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts)
 - [OpenZeppelin Contracts Upgradeable](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable)（`lib/openzeppelin-contracts-upgradeable`，与主库 v5.6 配套）
 - [Uniswap Permit2](https://github.com/Uniswap/permit2)（`permit2/` remapping）
+- Uniswap V2 预编译产物（`lib/uniswap-artifacts/`，来自 npm `@uniswap/v2-core` / `@uniswap/v2-periphery` 的 `build/*.json`，用于本地/测试网部署而无需旧版 solc）
 
 克隆后若子模块未就绪：
 
@@ -15,10 +16,42 @@
 git submodule update --init --recursive
 ```
 
+## 双 Uniswap V2 池 + 闪电套利（`src/flash_arb/`）
+
+- **MyToken**：两枚 ERC20，构造函数一次性 `mint` 给部署者，便于加池。
+- **FlashArbitrage**：在 **PoolA**（`factoryA` 上的 Pair）闪电借 `tokenA`，经 **routerB / PoolB** 做 `swapExactTokensForTokens` 换得 `tokenB`，用 `routerA.getAmountsIn` 计算应还 B 数量并转回 Pair；盈余 B 转给调用者。
+- **部署脚本** [`script/DeployFlashArbEnv.s.sol`](script/DeployFlashArbEnv.s.sol)：部署 WETH9、两套 Factory+Router、两枚代币、PoolA（例如 10k A : 25k B）与 PoolB（10k A : 50k B）制造价差；可选在同一批广播里执行闪电兑换。
+- **操作手册**（原理、部署、`cast` 调用、参数与排错）：[`docs/flash-swap-manual.md`](docs/flash-swap-manual.md)
+
+本地验证（成功日志见 [`docs/flash-arb-test-log.txt`](docs/flash-arb-test-log.txt)）：
+
+```shell
+forge test --match-contract FlashArbitrageTest -vvv
+```
+
+测试网（需 `.env` 中 `PRIVATE_KEY`、`RPC_URL`；末尾 `1` 表示部署后立刻执行闪电）：
+
+```shell
+RUN_FLASH_SWAP=1 forge script script/DeployFlashArbEnv.s.sol:DeployFlashArbEnv --rpc-url sepolia --broadcast -vvvv
+```
+
+若已部署，可单独调用（将地址换成你链上日志中的值；`AMOUNT` 为借出 A 的 wei；`MIN_B` 为 PoolB 滑点下限；`DEADLINE` 为 unix 时间戳）：
+
+```shell
+cast send <FlashArbitrage> "executeFlash(address,uint256,address,address,uint256,uint256)" \
+  <pairA> <AMOUNT> <routerB> <routerA> <MIN_B> <DEADLINE> \
+  --rpc-url "$RPC_URL" --private-key "$PRIVATE_KEY"
+```
+
+说明：本仓库在 `foundry.toml` 中启用了 `via_ir` 与优化器，以避免部署脚本/测试中局部变量过多触发 “Stack too deep”。
+
+**代码库链接**：将本仓库推送到 GitHub/GitLab 等公开远端后，把浏览器中的仓库 URL 作为作业提交即可（例如 `git remote add origin https://github.com/<you>/hello_foundry.git` 后 `git push -u origin master`）。
+
 ## 主要合约（`src/`）
 
 | 路径 | 说明 |
 |------|------|
+| `flash_arb/MyToken.sol` / `FlashArbitrage.sol` | 双 ERC20 + 跨两套 Uniswap V2 的闪电兑换套利（见上一节） |
 | `v2/mytoken/token_bank_v2.sol` — **TokenBankV2** | 标准 `deposit` / `withdraw`；**EIP-2612** 离线授权由第三方代调的 `permitDeposit`；**Permit2 Allowance Transfer** 的 `depositWithPermit2`（需先对 Permit2 合约 `approve` 代币） |
 | `v2/mytoken/xzx_token.sol` — **XZXToken** | 带 `ERC20Permit` 的示例代币，部署脚本用于与 TokenBankV2 联署 |
 | `v2/mynft/NFTMarketV2.sol` — **NFTMarket** | 上架 / 下架；买家通过 `permitBuy` 或 `transferWithCallback`（`ITokenRecipient`）完成 ERC20 支付，购买需 EIP-712 白名单签名 |
@@ -31,6 +64,7 @@ git submodule update --init --recursive
 
 ## 测试（`test/`）
 
+- `FlashArbitrage.t.sol` — 双 Factory/双池 + `FlashArbitrage` 闪电套利（artifact 部署）
 - `TokenBankV2PermitTest.sol` — EIP-2612 `permitDeposit`
 - `TokenBankV2Permit2Test.sol` — Permit2 `depositWithPermit2`（含 `mocks/MockPermit2.sol`）
 - `NFTMarketV2Test.sol` — 市场与白名单购买流程
