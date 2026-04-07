@@ -28,6 +28,25 @@ interface IUniRouter {
 }
 
 /// @notice Deploys two Uniswap V2 stacks from npm artifacts, two ERC20s, PoolA/PoolB, FlashArbitrage; optional flash (RUN_FLASH_SWAP=1).
+// WETH9
+// 0x5744F6c8B066586cC81f79a57F99C0E5bfFDBB80
+// factoryA
+// 0xA992946db59DB076AD2923813201e520b2954eFd
+// factoryB
+// 0xC72C23f02965767146D136281B7198b993e5b29b
+// routerA
+// 0x0a9166CD91887C82470F9Bf84cdA2847874f74aB
+// routerB
+// 0xf0e6b664320EFa0c58214D1711d505286F8d0B40
+// tokenA
+// 0xEdf9aE07B14bf73AD3bE3016a59de16A6c4369E7
+// tokenB
+// 0x6F8f3c1672ff6Dd62EfF801C4662a41fCE2490c3
+// pairA
+// 0x0ef706287fa6b83752deA17fa6106bdf08208706
+// FlashArbitrage
+// 0xA113c18936d6a69e16Dd5E1465d70941FeE685C1
+
 contract DeployFlashArbEnv is Script {
     uint256 internal constant SUPPLY = 10_000_000 * 1e18;
 

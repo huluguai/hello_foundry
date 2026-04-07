@@ -22,6 +22,7 @@ git submodule update --init --recursive
 - **FlashArbitrage**：在 **PoolA**（`factoryA` 上的 Pair）闪电借 `tokenA`，经 **routerB / PoolB** 做 `swapExactTokensForTokens` 换得 `tokenB`，用 `routerA.getAmountsIn` 计算应还 B 数量并转回 Pair；盈余 B 转给调用者。
 - **部署脚本** [`script/DeployFlashArbEnv.s.sol`](script/DeployFlashArbEnv.s.sol)：部署 WETH9、两套 Factory+Router、两枚代币、PoolA（例如 10k A : 25k B）与 PoolB（10k A : 50k B）制造价差；可选在同一批广播里执行闪电兑换。
 - **操作手册**（原理、部署、`cast` 调用、参数与排错）：[`docs/flash-swap-manual.md`](docs/flash-swap-manual.md)
+- **DApp ABI 导出**（`FlashArbitrage`、Router/Factory/Pair 精简、`ERC20`、`MyToken`）：[`abis/`](abis/) 与 [`abis/README.md`](abis/README.md)
 
 本地验证（成功日志见 [`docs/flash-arb-test-log.txt`](docs/flash-arb-test-log.txt)）：
 
