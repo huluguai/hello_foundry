@@ -158,4 +158,62 @@ contract StakingPoolTest is Test {
         pool.claim();
         assertEq(kk.balanceOf(alice), 4 * REWARD_PER_BLOCK);
     }
+
+    /// @notice 对照文档「逐块演算示例」按固定块高精确断言 acc/debt/pending 与实际发放。
+    function test_blockByBlockAccounting_matchesDocScenario() public {
+        _wrap(alice, 100 ether);
+        _wrap(bob, 100 ether);
+
+        uint256 b0 = 1_000_000;
+        vm.roll(b0);
+
+        // Step 1: block 100 -> A deposit 100 shares-equivalent assets.
+        vm.prank(alice);
+        pool.deposit(100 ether);
+        (uint256 aShares0, uint256 aDebt0) = pool.userInfo(alice);
+        assertEq(aShares0, 100 ether);
+        assertEq(aDebt0, 0);
+        assertEq(pool.totalShares(), 100 ether);
+
+        // Step 2: block 103 -> B deposit 100; A pending should be 30 KK.
+        vm.roll(b0 + 3);
+        vm.prank(bob);
+        pool.deposit(100 ether);
+        (uint256 bShares0, uint256 bDebt0) = pool.userInfo(bob);
+        assertEq(bShares0, 100 ether);
+        assertEq(bDebt0, 30 ether);
+        assertEq(pool.pendingReward(alice), 30 ether);
+
+        // Step 3: block 106 -> A claim; should receive 45 KK.
+        vm.roll(b0 + 6);
+        assertEq(pool.pendingReward(alice), 45 ether);
+        vm.prank(alice);
+        pool.claim();
+        assertEq(kk.balanceOf(alice), 45 ether);
+        (, uint256 aDebt1) = pool.userInfo(alice);
+        assertEq(aDebt1, 45 ether);
+
+        // Step 4: block 108 -> A withdraw 50 shares; should harvest extra 10 KK first.
+        vm.roll(b0 + 8);
+        assertEq(pool.pendingReward(alice), 10 ether);
+        vm.prank(alice);
+        pool.withdraw(50 ether);
+        assertEq(kk.balanceOf(alice), 55 ether);
+        (uint256 aShares2, uint256 aDebt2) = pool.userInfo(alice);
+        assertEq(aShares2, 50 ether);
+        assertEq(aDebt2, 27.5 ether);
+        assertEq(pool.totalShares(), 150 ether);
+
+        // Step 5: block 110 -> B claim; pending should be 38.3333333333 KK (floor from acc precision).
+        vm.roll(b0 + 10);
+        uint256 expectedBPending = 38_333_333_333_300_000_000;
+        assertEq(pool.pendingReward(bob), expectedBPending);
+        vm.prank(bob);
+        pool.claim();
+        assertEq(kk.balanceOf(bob), expectedBPending);
+
+        // At block 110, A still has unclaimed ~6.66666666665 KK.
+        uint256 expectedAPending = 6_666_666_666_650_000_000;
+        assertEq(pool.pendingReward(alice), expectedAPending);
+    }
 }
